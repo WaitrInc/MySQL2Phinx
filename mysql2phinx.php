@@ -8,6 +8,12 @@
  * ```
  */
 
+const FILE_PATH = 0;
+const DB_NAME = 1;
+const USER_NAME = 2;
+const HOST = 3;
+const PORT = 4;
+
 if ($argc < 4) {
     echo '===============================' . PHP_EOL;
     echo 'Phinx MySQL migration generator' . PHP_EOL;
