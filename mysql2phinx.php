@@ -22,7 +22,7 @@ $config = array(
     'name'    => $argv[1],
     'user'    => $argv[2],
     'pass'    => $argv[3],
-    'host'    => $argc === 5 ? $argv[6] : 'localhost',
+    'host'    => $argc === 5 ? $argv[4] : 'localhost',
     'port'    => $argc === 6 ? $argv[5] : '3306'
 );
 
