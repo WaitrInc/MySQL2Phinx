@@ -5,27 +5,51 @@
  * Commandline usage:
  * ```
  * $ php -f mysql2phinx [database] [user] [password] > migration.php
+ * $ php -f mysql2phinx [database] [user] [password] [host] > migration.php
+ * $ php -f mysql2phinx [database] [user] [password] [host] [port] > migration.php
  * ```
  */
+
+// <editor-fold desc="Config and Useage">
+
+const FILE_PATH    = 0;
+const DB_NAME      = 1;
+const DB_USER_NAME = 2;
+const DB_USER_PWD  = 3;
+const DB_HOST      = 4;
+const DB_PORT      = 5;
+const TAB          = '    ';
 
 if ($argc < 4) {
     echo '===============================' . PHP_EOL;
     echo 'Phinx MySQL migration generator' . PHP_EOL;
     echo '===============================' . PHP_EOL;
     echo 'Usage:' . PHP_EOL;
-    echo 'php -f ' . $argv[0] . ' [database] [user] [password] > migration.php';
+    echo 'php -f ' . $argv[FILE_PATH] . ' [database] [user] [password] > migration.php' . PHP_EOL;
+    echo 'php -f ' . $argv[FILE_PATH] . ' [database] [user] [password] [host] > migration.php' . PHP_EOL;
+    echo 'php -f ' . $argv[FILE_PATH] . ' [database] [user] [password] [host] [port] > migration.php' . PHP_EOL;
+    echo '[host] and [port] default to localhost and 3306 respectively';
     echo PHP_EOL;
     exit;
 }
 
 $config = array(
-    'name'    => $argv[1],
-    'user'    => $argv[2],
-    'pass'    => $argv[3],
-    'host'    => $argc === 5 ? $argv[4] : 'localhost',
-    'port'    => $argc === 6 ? $argv[5] : '3306'
+    'name'    => $argv[DB_NAME],
+    'user'    => $argv[DB_USER_NAME],
+    'pass'    => $argv[DB_USER_PWD],
+    'host'    => $argc === 5 ? $argv[DB_HOST] : 'localhost',
+    'port'    => $argc === 6 ? $argv[DB_PORT] : '3306'
 );
+// </editor-fold>
 
+// <editor-fold desc="Migration Writers">
+
+/**
+ * Actually writes the migration code
+ * @param \mysqli $mysqli
+ * @param integer $indent
+ * @return string
+ */
 function createMigration($mysqli, $indent = 2)
 {
     $output = array();
@@ -35,17 +59,13 @@ function createMigration($mysqli, $indent = 2)
     return implode(PHP_EOL, $output) . PHP_EOL ;
 }
 
-function getMysqliConnection($config)
-{
-    return new mysqli($config['host'], $config['user'], $config['pass'], $config['name']);
-}
-
-function getTables($mysqli)
-{
-    $res = $mysqli->query('SHOW TABLES');
-    return array_map(function($a) { return $a[0]; }, $res->fetch_all());
-}
-
+/**
+ * Get the PHP code for a table migration
+ * @param string $table
+ * @param \mysqli $mysqli
+ * @param integer $indent
+ * @return string PHP code to migrate table
+ */
 function getTableMigration($table, $mysqli, $indent)
 {
     $ind = getIndentation($indent);
@@ -55,14 +75,17 @@ function getTableMigration($table, $mysqli, $indent)
     $output[] = $ind . '$table = $this->table(\'' . $table . '\');';
     $output[] = $ind . '$table';
 
-    foreach (getColumns($table, $mysqli) as $column) {
+    $columns = getColumns($table, $mysqli);
+    foreach ($columns as $column) {
         if ($column['Field'] !== 'id') {
             $output[] = getColumnMigration($column['Field'], $column, $indent + 1);
         }
     }
 
-    if ($foreign_keys = getForeignKeysMigrations(getForeignKeys($table, $mysqli), $indent + 1)) {
-        $output[] = $foreign_keys;
+    $foreign_keys = getForeignKeys($table, $mysqli);
+    $foreign_key_migrations = getForeignKeysMigrations($foreign_keys, $indent + 1);
+    if ($foreign_key_migrations)  {
+        $output[] = $foreign_key_migrations;
     }
 
     $output[] = $ind . '    ->create();';
@@ -71,47 +94,12 @@ function getTableMigration($table, $mysqli, $indent)
     return implode(PHP_EOL, $output);
 }
 
-function getColumnMigration($column, $columndata, $indent)
-{
-    $ind = getIndentation($indent);
-
-    $phinxtype = getPhinxColumnType($columndata);
-    $columnattributes = getPhinxColumnAttibutes($phinxtype, $columndata);
-    $output = $ind . '->addColumn(\'' . $column . '\', \'' . $phinxtype . '\', ' . $columnattributes . ')';
-    return $output;
-}
-
-function getIndexMigrations($indexes, $indent)
-{
-    $ind = getIndentation($indent);
-
-    $keyedindexes = array();
-    foreach($indexes as $index) {
-        if ($index['Column_name'] === 'id') {
-            continue;
-        }
-
-        $key = $index['Key_name'];
-        if (!isset($keyedindexes[$key])) {
-            $keyedindexes[$key] = array();
-            $keyedindexes[$key]['columns'] = array();
-            $keyedindexes[$key]['unique'] = $index['Non_unique'] !== '1';
-        }
-
-        $keyedindexes[$key]['columns'][] = $index['Column_name'];
-    }
-
-    $output = [];
-
-    foreach ($keyedindexes as $index) {
-        $columns = 'array(\'' . implode('\', \'', $index['columns']) . '\')';
-        $options = $index['unique'] ? 'array(\'unique\' => true)' : 'array()';
-        $output[] = $ind . '->addIndex(' . $columns . ', ' . $options . ')';
-    }
-
-    return implode(PHP_EOL, $output);
-}
-
+/**
+ * Get the PHP code to migrate foreign key constraints
+ * @param type $foreign_keys
+ * @param type $indent
+ * @return type
+ */
 function getForeignKeysMigrations($foreign_keys, $indent)
 {
     $ind = getIndentation($indent);
@@ -125,19 +113,181 @@ function getForeignKeysMigrations($foreign_keys, $indent)
     return implode(PHP_EOL, $output);
 }
 
-/* ---- */
-
-function getMySQLColumnType($columndata)
+/**
+ * Get PHP code for index migration
+ * @param type $indexes
+ * @param integer $indent
+ * @return string
+ */
+function getIndexMigrations($indexes, $indent) // TODO Figure out why this is orphaned
 {
-    $type = $columndata['Type'];
+    $ind = getIndentation($indent);
+
+    $keyed_indexes = array();
+    foreach($indexes as $index) {
+        if ($index['Column_name'] === 'id') {
+            continue;
+        }
+
+        $key = $index['Key_name'];
+        if (!isset($keyed_indexes[$key])) {
+            $keyed_indexes[$key] = array();
+            $keyed_indexes[$key]['columns'] = array();
+            $keyed_indexes[$key]['unique'] = $index['Non_unique'] !== '1';
+        }
+
+        $keyed_indexes[$key]['columns'][] = $index['Column_name'];
+    }
+
+    $output = [];
+
+    foreach ($keyed_indexes as $index) {
+        $columns = 'array(\'' . implode('\', \'', $index['columns']) . '\')';
+        $options = $index['unique'] ? 'array(\'unique\' => true)' : 'array()';
+        $output[] = $ind . '->addIndex(' . $columns . ', ' . $options . ')';
+    }
+
+    return implode(PHP_EOL, $output);
+}
+
+/**
+ * Get the PHP code for a colum migration
+ * @param string $column column name
+ * @param mixed[] $column_data type information about column (type, null, key, etc)
+ * @param integer $indent
+ * @return string
+ */
+function getColumnMigration($column, $column_data, $indent)
+{
+    $ind = getIndentation($indent);
+
+    $phinx_type = getPhinxColumnType($column_data);
+    $column_attributes = getPhinxColumnAttibutes($phinx_type, $column_data);
+    $output = $ind . '->addColumn(\'' . $column . '\', \'' . $phinx_type . '\', ' . $column_attributes . ')';
+    return $output;
+}
+
+// </editor-fold>
+
+// <editor-fold desc="MySQL Databse Info Gathering">
+
+/**
+ * Establish a connection to the database
+ * @param mixed[] $config
+ * @return \mysqli
+ */
+function getMysqliConnection($config)
+{
+    return new mysqli($config['host'], $config['user'], $config['pass'], $config['name']);
+}
+
+/**
+ * Get a list of tables in the database
+ * @param \mysqli $mysqli
+ * @return string[] list of table names
+ */
+function getTables($mysqli)
+{
+    $res = $mysqli->query('SHOW TABLES');
+    $tables = $res->fetch_all();
+    mysqli_free_result($res);
+    return array_map(function($a) { return $a[0]; }, $tables);
+}
+
+/**
+ * Get the columns from a table in the database
+ * @param string $table
+ * @param \mysqli $mysqli
+ * @return string[] list of column names
+ */
+function getColumns($table, $mysqli)
+{
+    $res = $mysqli->query('SHOW COLUMNS FROM ' . $table);
+    $columns = $res->fetch_all(MYSQLI_ASSOC);
+    mysqli_free_result($res);
+    return $columns;
+}
+
+/**
+ * Get index information from a table
+ * @param string $table
+ * @param \mysqli $mysqli
+ * @return mixed[][]
+ */
+function getIndexes($table, $mysqli)
+{
+    $res = $mysqli->query('SHOW INDEXES FROM ' . $table);
+    $indexes = $res->fetch_all(MYSQLI_ASSOC);
+    mysqli_free_result($res);
+    return $indexes;
+}
+
+/**
+ * Get foreign key information from a table
+ * @param type $table
+ * @param type $mysqli
+ * @return type
+ */
+function getForeignKeys($table, $mysqli)
+{
+    $res = $mysqli->query("SELECT
+        cols.TABLE_NAME,
+        cols.COLUMN_NAME,
+        refs.REFERENCED_TABLE_NAME,
+        refs.REFERENCED_COLUMN_NAME,
+        cRefs.UPDATE_RULE,
+        cRefs.DELETE_RULE
+    FROM INFORMATION_SCHEMA.COLUMNS as cols
+    LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS refs
+        ON refs.TABLE_SCHEMA=cols.TABLE_SCHEMA
+        AND refs.REFERENCED_TABLE_SCHEMA=cols.TABLE_SCHEMA
+        AND refs.TABLE_NAME=cols.TABLE_NAME
+        AND refs.COLUMN_NAME=cols.COLUMN_NAME
+    LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS cons
+        ON cons.TABLE_SCHEMA=cols.TABLE_SCHEMA
+        AND cons.TABLE_NAME=cols.TABLE_NAME
+        AND cons.CONSTRAINT_NAME=refs.CONSTRAINT_NAME
+    LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS cRefs
+        ON cRefs.CONSTRAINT_SCHEMA=cols.TABLE_SCHEMA
+        AND cRefs.CONSTRAINT_NAME=refs.CONSTRAINT_NAME
+    WHERE
+        cols.TABLE_NAME = '" . $table . "'
+        AND cols.TABLE_SCHEMA = DATABASE()
+        AND refs.REFERENCED_TABLE_NAME IS NOT NULL
+        AND cons.CONSTRAINT_TYPE = 'FOREIGN KEY'
+    ;");
+
+    $foreign_keys = $res->fetch_all(MYSQLI_ASSOC);
+    mysqli_free_result($res);
+
+    return $foreign_keys;
+}
+
+// </editor-fold>
+
+// <editor-fold desc="MySQL -> Phinx Mapping">
+
+/**
+ * Pulls the base type from a column. eg, "int(10)" is returned as "int"
+ * @param mixed[] $column_data
+ * @return type
+ */
+function getMySQLColumnType($column_data)
+{
+    $type = $column_data['Type'];
     $pattern = '/^[a-z]+/';
     preg_match($pattern, $type, $match);
     return $match[0];
 }
 
-function getPhinxColumnType($columndata)
+/**
+ * Maps a MySQL column type to a Phinx colum type
+ * @param mixed[] $column_data
+ * @return string
+ */
+function getPhinxColumnType($column_data)
 {
-    $type = getMySQLColumnType($columndata);
+    $type = getMySQLColumnType($column_data);
 
     switch($type) {
         case 'tinyint':
@@ -145,6 +295,10 @@ function getPhinxColumnType($columndata)
         case 'int':
         case 'mediumint':
             return 'integer';
+
+        // TODO Decide if theres a reason this used to be returned as [decimal]
+        case 'decimal':
+            return 'decimal';
 
         case 'timestamp':
             return 'timestamp';
@@ -173,31 +327,36 @@ function getPhinxColumnType($columndata)
     }
 }
 
-function getPhinxColumnAttibutes($phinxtype, $columndata)
+/**
+ * Maps MySQL column type information into Phinx equiv
+ * @param string $phinx_type
+ * @param mixed[] $column_data
+ * @return string
+ */
+function getPhinxColumnAttibutes($phinx_type, $column_data)
 {
+    // TODO apparently this doesn't support any type with precision, hence the missing types like DECIMAL(10,2)
     $attributes = array();
 
-    // var_dump($columndata);
-
     // has NULL
-    if ($columndata['Null'] === 'YES') {
+    if ($column_data['Null'] === 'YES') {
         $attributes[] = '\'null\' => true';
     }
 
     // default value
-    if ($columndata['Default'] !== null) {
-        $default = is_int($columndata['Default']) ? $columndata['Default'] : '\'' . $columndata['Default'] . '\'';
+    if ($column_data['Default'] !== null) {
+        $default = is_int($column_data['Default']) ? $column_data['Default'] : '\'' . $column_data['Default'] . '\'';
         $attributes[] = '\'default\' => ' . $default;
     }
 
     // on update CURRENT_TIMESTAMP
-    if ($columndata['Extra'] === 'on update CURRENT_TIMESTAMP') {
+    if ($column_data['Extra'] === 'on update CURRENT_TIMESTAMP') {
         $attributes[] = '\'update\' => \'CURRENT_TIMESTAMP\'';
     }
 
     // limit / length
     $limit = 0;
-    switch (getMySQLColumnType($columndata)) {
+    switch (getMySQLColumnType($column_data)) {
         case 'tinyint':
             $limit = 'MysqlAdapter::INT_TINY';
             break;
@@ -227,8 +386,9 @@ function getPhinxColumnAttibutes($phinxtype, $columndata)
             break;
 
         default:
+            // TODO precision probably goes here
             $pattern = '/\((\d+)\)$/';
-            if (1 === preg_match($pattern, $columndata['Type'], $match)) {
+            if (1 === preg_match($pattern, $column_data['Type'], $match)) {
                 $limit = $match[1];
             }
     }
@@ -238,65 +398,37 @@ function getPhinxColumnAttibutes($phinxtype, $columndata)
 
     // unsigned
     $pattern = '/\(\d+\) unsigned$/';
-    if (1 === preg_match($pattern, $columndata['Type'], $match)) {
+    if (1 === preg_match($pattern, $column_data['Type'], $match)) {
         $attributes[] = '\'signed\' => false';
     }
 
     // enum values
-    if ($phinxtype === 'enum') {
-        $attributes[] = '\'values\' => ' . str_replace('enum', 'array', $columndata['Type']);
+    if ($phinx_type === 'enum') {
+        $attributes[] = '\'values\' => ' . str_replace('enum', 'array', $column_data['Type']);
     }
 
     return 'array(' . implode(', ', $attributes) . ')';
 }
 
-function getColumns($table, $mysqli)
-{
-    $res = $mysqli->query('SHOW COLUMNS FROM ' . $table);
-    return $res->fetch_all(MYSQLI_ASSOC);
-}
+// </editor-fold>
 
-function getIndexes($table, $mysqli)
-{
-    $res = $mysqli->query('SHOW INDEXES FROM ' . $table);
-    return $res->fetch_all(MYSQLI_ASSOC);
-}
+// <editor-fold desc="Helper Functions">
 
-function getForeignKeys($table, $mysqli)
-{
-    $res = $mysqli->query("SELECT
-        cols.TABLE_NAME,
-        cols.COLUMN_NAME,
-        refs.REFERENCED_TABLE_NAME,
-        refs.REFERENCED_COLUMN_NAME,
-        cRefs.UPDATE_RULE,
-        cRefs.DELETE_RULE
-    FROM INFORMATION_SCHEMA.COLUMNS as cols
-    LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS refs
-        ON refs.TABLE_SCHEMA=cols.TABLE_SCHEMA
-        AND refs.REFERENCED_TABLE_SCHEMA=cols.TABLE_SCHEMA
-        AND refs.TABLE_NAME=cols.TABLE_NAME
-        AND refs.COLUMN_NAME=cols.COLUMN_NAME
-    LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS cons
-        ON cons.TABLE_SCHEMA=cols.TABLE_SCHEMA
-        AND cons.TABLE_NAME=cols.TABLE_NAME
-        AND cons.CONSTRAINT_NAME=refs.CONSTRAINT_NAME
-    LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS cRefs
-        ON cRefs.CONSTRAINT_SCHEMA=cols.TABLE_SCHEMA
-        AND cRefs.CONSTRAINT_NAME=refs.CONSTRAINT_NAME
-    WHERE
-        cols.TABLE_NAME = '" . $table . "'
-        AND cols.TABLE_SCHEMA = DATABASE()
-        AND refs.REFERENCED_TABLE_NAME IS NOT NULL
-        AND cons.CONSTRAINT_TYPE = 'FOREIGN KEY'
-    ;");
-    return $res->fetch_all(MYSQLI_ASSOC);
-}
-
+/**
+ * Provided $level * count(TAB) spaces for indentation
+ * @param integer $level
+ * @return string
+ */
 function getIndentation($level)
 {
-    return str_repeat('    ', $level);
+    return str_repeat(TAB, $level);
 }
+
+// </editor-fold>
+
+// <editor-fold desc="Actual Script">
+
+$mysqli = getMysqliConnection($config);
 
 echo '<?php' . PHP_EOL;
 echo 'use Phinx\Migration\AbstractMigration;' . PHP_EOL;
@@ -307,6 +439,10 @@ echo '{' . PHP_EOL;
 echo '    public function up()' . PHP_EOL;
 echo '    {' . PHP_EOL;
 echo '        // Automatically created phinx migration commands for tables from database ' . $config['name'] . PHP_EOL . PHP_EOL;
-echo createMigration(getMysqliConnection($config));
+echo          createMigration($mysqli);
 echo '    }' . PHP_EOL;
 echo '}' . PHP_EOL;
+
+mysqli_close($mysqli);
+
+// </editor-fold>
