@@ -7,13 +7,13 @@
  * $ php -f mysql2phinx [database] [user] [password] > migration.php
  * ```
  */
-const FILE_PATH = 0;
-const DB_NAME = 1;
+const FILE_PATH    = 0;
+const DB_NAME      = 1;
 const DB_USER_NAME = 2;
-const DB_USER_PWD = 3;
-const DB_HOST = 4;
-const DB_PORT = 5;
-const TAB = '    ';
+const DB_USER_PWD  = 3;
+const DB_HOST      = 4;
+const DB_PORT      = 5;
+const TAB          = '    ';
 
 if ($argc < 4) {
     echo '===============================' . PHP_EOL;
@@ -109,17 +109,17 @@ function getTableMigration($table, $mysqli, $indent)
 /**
  * Get the PHP code for a colum migration
  * @param string $column column name
- * @param mixed[] $columndata type information about column (type, null, key, etc)
+ * @param mixed[] $column_data type information about column (type, null, key, etc)
  * @param integer $indent
  * @return string
  */
-function getColumnMigration($column, $columndata, $indent)
+function getColumnMigration($column, $column_data, $indent)
 {
     $ind = getIndentation($indent);
 
-    $phinxtype = getPhinxColumnType($columndata);
-    $columnattributes = getPhinxColumnAttibutes($phinxtype, $columndata);
-    $output = $ind . '->addColumn(\'' . $column . '\', \'' . $phinxtype . '\', ' . $columnattributes . ')';
+    $phinx_type = getPhinxColumnType($column_data);
+    $column_attributes = getPhinxColumnAttibutes($phinx_type, $column_data);
+    $output = $ind . '->addColumn(\'' . $column . '\', \'' . $phinx_type . '\', ' . $column_attributes . ')';
     return $output;
 }
 
@@ -133,25 +133,25 @@ function getIndexMigrations($indexes, $indent) // TODO Figure out why this is or
 {
     $ind = getIndentation($indent);
 
-    $keyedindexes = array();
+    $keyed_indexes = array();
     foreach($indexes as $index) {
         if ($index['Column_name'] === 'id') {
             continue;
         }
 
         $key = $index['Key_name'];
-        if (!isset($keyedindexes[$key])) {
-            $keyedindexes[$key] = array();
-            $keyedindexes[$key]['columns'] = array();
-            $keyedindexes[$key]['unique'] = $index['Non_unique'] !== '1';
+        if (!isset($keyed_indexes[$key])) {
+            $keyed_indexes[$key] = array();
+            $keyed_indexes[$key]['columns'] = array();
+            $keyed_indexes[$key]['unique'] = $index['Non_unique'] !== '1';
         }
 
-        $keyedindexes[$key]['columns'][] = $index['Column_name'];
+        $keyed_indexes[$key]['columns'][] = $index['Column_name'];
     }
 
     $output = [];
 
-    foreach ($keyedindexes as $index) {
+    foreach ($keyed_indexes as $index) {
         $columns = 'array(\'' . implode('\', \'', $index['columns']) . '\')';
         $options = $index['unique'] ? 'array(\'unique\' => true)' : 'array()';
         $output[] = $ind . '->addIndex(' . $columns . ', ' . $options . ')';
