@@ -88,6 +88,12 @@ function getTableMigration($table, $mysqli, $indent)
         $output[] = $foreign_key_migrations;
     }
 
+    $indexes = getIndexes($table, $mysqli);
+    $index_migrations = getIndexMigrations($indexes, $indent + 1);
+    if ($index_migrations) {
+        $output[] = $index_migrations;
+    }
+
     $output[] = $ind . '    ->create();';
     $output[] = PHP_EOL;
 
@@ -178,7 +184,12 @@ function getColumnMigration($column, $column_data, $indent)
  */
 function getMysqliConnection($config)
 {
-    return new mysqli($config['host'], $config['user'], $config['pass'], $config['name']);
+    $mysqli = new mysqli($config['host'], $config['user'], $config['pass'], $config['name']);
+    if ($mysqli) {
+        return $mysqli;
+    } else {
+        die('unable to connect to database');
+    }
 }
 
 /**
