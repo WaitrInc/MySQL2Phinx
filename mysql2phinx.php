@@ -88,6 +88,12 @@ function getTableMigration($table, $mysqli, $indent)
         $output[] = $foreign_key_migrations;
     }
 
+    $indexes = getIndexes($table, $mysqli);
+    $index_migrations = getIndexMigrations($indexes, $indent + 1);
+    if ($index_migrations) {
+        $output[] = $index_migrations;
+    }
+
     $output[] = $ind . '    ->create();';
     $output[] = PHP_EOL;
 
@@ -119,12 +125,14 @@ function getForeignKeysMigrations($foreign_keys, $indent)
  * @param integer $indent
  * @return string
  */
-function getIndexMigrations($indexes, $indent) // TODO Figure out why this is orphaned
+function getIndexMigrations($indexes, $indent)
 {
     $ind = getIndentation($indent);
 
     $keyed_indexes = array();
     foreach($indexes as $index) {
+        // TODO see if this thing can handle pk's not named id
+        // If it can then this check should be on Key_name for PRIMARY and not a specific field name
         if ($index['Column_name'] === 'id') {
             continue;
         }
@@ -141,10 +149,25 @@ function getIndexMigrations($indexes, $indent) // TODO Figure out why this is or
 
     $output = [];
 
-    foreach ($keyed_indexes as $index) {
-        $columns = 'array(\'' . implode('\', \'', $index['columns']) . '\')';
-        $options = $index['unique'] ? 'array(\'unique\' => true)' : 'array()';
-        $output[] = $ind . '->addIndex(' . $columns . ', ' . $options . ')';
+    foreach ($keyed_indexes as $key_name => $index) {
+        $columns = "array('" . implode("', '", $index['columns']) . "')";
+        
+        $options = [];
+        $options[] = 'array(';
+        if ($index['unique']) {
+            $options[] =  "'unique' => true";
+            $needs_comma = true;
+        } else {
+            $needs_comma = false;
+        }
+
+        if ($needs_comma === true) {
+            $options[] = ', ';
+
+        }
+        $options[] = "'name' => '" . $key_name . "')";
+        $output[] = $ind . '->addIndex(' . $columns . ', ' . implode('', $options) . ')';
+
     }
 
     return implode(PHP_EOL, $output);
@@ -178,7 +201,12 @@ function getColumnMigration($column, $column_data, $indent)
  */
 function getMysqliConnection($config)
 {
-    return new mysqli($config['host'], $config['user'], $config['pass'], $config['name']);
+    $mysqli = new mysqli($config['host'], $config['user'], $config['pass'], $config['name']);
+    if ($mysqli) {
+        return $mysqli;
+    } else {
+        die('Unable to connect to database ' . $config['name'] . ' on ' . $config['host'] . ':' . $config['port']);
+    }
 }
 
 /**
