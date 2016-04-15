@@ -6,13 +6,15 @@ A simple cli php script to generate a [phinx](https://github.com/robmorgan/phinx
 
 ```
 $ php -f mysql2phinx.php [database] [user] [password] > migration.php
+$ php -f mysql2phinx [database] [user] [password] [host] > migration.php
+$ php -f mysql2phinx [database] [user] [password] [host] [port] > migration.php
 ```
 
-Will create an initial migration class in the file `migration.php` for all tables in the database passed. 
+Will create an initial migration class in the file `migration.php` for all tables in the database passed.
 
 ## Caveat
 
-The `id` column will be unsigned. Phinx does not currently supported unsigned primary columns. There is [a workaround](https://github.com/robmorgan/phinx/issues/250).
+The `id` column will be signed. Phinx does not currently supported unsigned primary columns. There is [a workaround](https://github.com/robmorgan/phinx/issues/250).
 
 ### TODOs
 

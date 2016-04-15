@@ -139,9 +139,10 @@ function getIndexMigrations($indexes, $indent)
 
         $key = $index['Key_name'];
         if (!isset($keyed_indexes[$key])) {
-            $keyed_indexes[$key] = array();
-            $keyed_indexes[$key]['columns'] = array();
-            $keyed_indexes[$key]['unique'] = $index['Non_unique'] !== '1';
+            $keyed_indexes[$key]             = array();
+            $keyed_indexes[$key]['columns']  = array();
+            $keyed_indexes[$key]['unique']   = $index['Non_unique'] !== '1';
+            $keyed_indexes[$key]['fulltext'] = $index['Index_type'] === 'FULLTEXT';
         }
 
         $keyed_indexes[$key]['columns'][] = $index['Column_name'];
@@ -151,23 +152,33 @@ function getIndexMigrations($indexes, $indent)
 
     foreach ($keyed_indexes as $key_name => $index) {
         $columns = "array('" . implode("', '", $index['columns']) . "')";
-        
+
+        $needs_comma = false;
         $options = [];
         $options[] = 'array(';
+
+        // Support for unique indexes
         if ($index['unique']) {
             $options[] =  "'unique' => true";
             $needs_comma = true;
-        } else {
-            $needs_comma = false;
         }
 
+        // Support for full text indexes
+        if ($index['fulltext']) {
+            if ($needs_comma === true) {
+                $options[] = ', ';
+            }
+            $options[] = "'type' => 'fulltext'";
+            $needs_comma = true;
+        }
+
+        // Support for named indexes
         if ($needs_comma === true) {
             $options[] = ', ';
-
         }
         $options[] = "'name' => '" . $key_name . "')";
-        $output[] = $ind . '->addIndex(' . $columns . ', ' . implode('', $options) . ')';
 
+        $output[] = $ind . '->addIndex(' . $columns . ', ' . implode('', $options) . ')';
     }
 
     return implode(PHP_EOL, $output);
