@@ -10,6 +10,11 @@ $ php -f mysql2phinx.php [database] [user] [password] > migration.php
 
 Will create an initial migration class in the file `migration.php` for all tables in the database passed. 
 
+## Example With Host
+```bash
+php -f mysql2phinx.php dbName userName suerSrecretPassword host.example.com > migration.php
+```
+
 ## Caveat
 
 The `id` column will be unsigned. Phinx does not currently supported unsigned primary columns. There is [a workaround](https://github.com/robmorgan/phinx/issues/250).
