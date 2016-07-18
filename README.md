@@ -12,7 +12,7 @@ Will create an initial migration class in the file `migration.php` for all table
 
 ## Example With Host
 ```bash
-php -f mysql2phinx.php dbName userName suerSrecretPassword host.example.com > migration.php
+$ php -f mysql2phinx.php dbName userName suerSrecretPassword host.example.com > migration.php
 ```
 
 ## Caveat
