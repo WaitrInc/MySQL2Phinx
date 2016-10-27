@@ -71,8 +71,8 @@ function getTableMigration($table, $mysqli, $indent)
     $ind = getIndentation($indent);
 
     $output = array();
-    $output[] = $ind . '// Migration for table ' . $table;
-    $output[] = $ind . '$table = $this->table(\'' . $table . '\');';
+    $output[] = $ind . '// Migration for table `' . $table . '`';
+    $output[] = $ind . '$table = $this->table(\'`' . $table . '`' . '\');';
     $output[] = $ind . '$table';
 
     $columns = getColumns($table, $mysqli);
@@ -202,7 +202,7 @@ function getTables($mysqli)
  */
 function getColumns($table, $mysqli)
 {
-    $res = $mysqli->query('SHOW COLUMNS FROM ' . $table);
+    $res = $mysqli->query('SHOW COLUMNS FROM `' . $table . '`');
     $columns = $res->fetch_all(MYSQLI_ASSOC);
     mysqli_free_result($res);
     return $columns;
@@ -216,7 +216,7 @@ function getColumns($table, $mysqli)
  */
 function getIndexes($table, $mysqli)
 {
-    $res = $mysqli->query('SHOW INDEXES FROM ' . $table);
+    $res = $mysqli->query('SHOW INDEXES FROM `' . $table . '`');
     $indexes = $res->fetch_all(MYSQLI_ASSOC);
     mysqli_free_result($res);
     return $indexes;
